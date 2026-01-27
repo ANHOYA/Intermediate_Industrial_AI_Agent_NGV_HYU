@@ -29,7 +29,7 @@ class AnalyzeResponse(BaseModel):
     confidence: float
     status: str
     logs: list[str]
-    obs: dict = {}
+    details: dict = {}
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_image(req: AnalyzeRequest):
@@ -44,7 +44,7 @@ async def analyze_image(req: AnalyzeRequest):
             confidence=result.get("confidence", 0.0),
             status=result.get("status", "completed"),
             logs=result.get("logs", []),
-            obs={} # Optional observation details
+            details=result.get("details", {})
         )
     except Exception as e:
         logger.error(f"Error processing {req.id}: {e}")

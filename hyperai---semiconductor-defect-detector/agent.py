@@ -21,30 +21,47 @@ API_KEY = os.getenv("API_KEY", "").strip("'").strip('"')
 MODEL_NAME = "gpt-4o-mini-2024-07-18"
 BRIDGE_ENDPOINT = "https://bridge.luxiacloud.com/llm/openai/chat/completions/gpt-4o-mini/create" 
 
-# Detailed Prompt Criteria (Synced from Frontend)
+# Golden Image URL (정상 제품 기준 이미지)
+GOLDEN_IMAGE_URL = "https://cfiles.dacon.co.kr/competitions/236680_dev/DEV_003.png"
+
+# Detailed Prompt Criteria (Granular for LLM Accuracy)
 BASE_CRITERIA = """
 상세 판단 가이드:
-    핀 : 
-        1. 핀이 확실하게 빠져있거나 절단 되거나 파손 된 경우에 해당 항목을 True로 설정한다.
-    패키지 : 
-        1. 크랙/파손/깨짐 등 패키지 손상이 있는 경우에 해당 항목을 True로 설정한다.
-    리드 : 
-        1. 리드 결손/단선이 있는 경우에 해당 항목을 True로 설정한다.
-    휨 : 
-        1. 리드끼리 접촉이 있는 경우에 해당 항목을 True로 설정한다.
-    솔더 : 
-        1. 솔더 브리지 또는 납땜 뭉침이 있는 경우에 해당 항목을 True로 설정한다.
-    소자 : 
-        1. 소자 위치가 과도하게 틀어짐이 있는 경우에 해당 항목을 True로 설정한다.
-        2. 소자가 파손 된 경우에는 해당 항목을 True로 설정한다.
+    1. 핀 체결 판단 (Category: pin):
+        - 하단 중앙의 세개의 구멍에 모든 핀이 체결되어잇으면 False
+        - [중요] 하나라도 빠져나가거나 누락된 핀이 있으면 True
+    
+    2. 패키지(Body) [파손] 판단 (Category: package_damage):
+        - 본체 모서리가 깨져서 날아갔거나(Chipped)
+        - 표면에 깊은 균열(Crack)이나 구멍이 뚫린 경우
+        - (주의: 단순 회전이나 기울어짐은 여기에 해당하지 않음)
+
+    3. 소자 [정렬] 판단 (Category: misalignment_severe):
+        - [회전/Rotation]: 검은색 사각형이 반듯하지 않고, 시계/반시계 방향으로 5도 이상 비스듬하게 회전되어 있습니까?
+        - [기울어짐/Tilt]: 본체의 모서리가 이미지 프레임과 평행하지 않고 삐뚤어져 있습니까?
+        - [위치 이탈]: 소자가 중앙 정위치를 크게 벗어나 있습니까?
+   
+    4. 리드 [결손/단선] 판단 (Category: lead_missing_or_broken):
+        - 핀이 절단(Broken)되어 있거나, 뿌리 부분만 남고 잘려 나간 경우.
+        - 핀 자체가 아예 없는(Missing) 경우.
+        - 정상적인 핀 개수(3개)보다 적은 경우.
+
+    5. 리드 판단 (Category: lead_severe_bend_or_contact):
+        - 핀끼리 서로 닿거나(Touching) 겹쳐 있는 경우.
+        - 핀의 끝부분이 패드(구멍)의 정위치에서 벗어나(Off-pad) 있는 경우.
+        
+    6. 솔더 판단 (Category: solder_bridge_or_blob):
+        - 핀 사이가 납(Solder)으로 이어져 있어 합선(Short)이 의심되는 경우.
+        - 솔더가 뭉쳐서(Blob) 핀 사이를 메우고 있는 경우.
 """
 
 OBS_ITEMS = [
-  {"key": "package_damage", "desc": "크랙/파손/깨짐 등 패키지 손상"},
+  {"key": "package_damage", "desc": "패키지 파손/크랙"},
   {"key": "lead_missing_or_broken", "desc": "리드 결손/단선"},
-  {"key": "lead_severe_bend_or_contact", "desc": "심한 휨 또는 리드끼리 접촉"},
-  {"key": "solder_bridge_or_blob", "desc": "솔더 브리지 또는 납땜 뭉침"},
-  {"key": "misalignment_severe", "desc": "소자 위치가 과도하게 틀어짐"},
+  {"key": "lead_severe_bend_or_contact", "desc": "심한 휨/접촉"},
+  {"key": "solder_bridge_or_blob", "desc": "솔더 브리지/뭉침"},
+  {"key": "misalignment_severe", "desc": "패키지 위치 틀어짐"},
+  {"key": "pin", "desc": "핀이 체결되지 않음"}
 ]
 
 # Robust LLM Wrapper with Retry
@@ -94,17 +111,29 @@ class LuxiaLLM:
                 time.sleep(wait_time)
                 if attempt >= max_retries:
                     raise e
-
 # Helper Functions
 def download_image(url):
     resp = requests.get(url, timeout=10)
     arr = np.asarray(bytearray(resp.content), dtype=np.uint8)
     return cv2.imdecode(arr, -1)
 
-def crop_image_4(img):
+def crop_image_split_vertical(img):
+    """
+    Split image into:
+    1. Top 70%: Focus on Body & Alignment
+    2. Bottom 60% (from 40% height to bottom): Focus on Pins
+    """
     h, w = img.shape[:2]
-    cx, cy = w // 2, h // 2
-    return [img[0:cy, 0:cx], img[0:cy, cx:w], img[cy:h, 0:cx], img[cy:h, cx:w]]
+    split_top_end = int(h * 0.7)
+    split_bottom_start = int(h * 0.4)
+    
+    img_top = img[0:split_top_end, :]       # Top region
+    img_bottom = img[split_bottom_start:, :] # Bottom region
+    
+    return [
+        (img_top, "top"), 
+        (img_bottom, "bottom")
+    ]
 
 def encode_image(img):
     _, buffer = cv2.imencode('.jpg', img)
@@ -112,8 +141,30 @@ def encode_image(img):
 
 def build_prompt_text(strict=False):
     criteria_text = "\n".join([f"- {item['key']}: {item['desc']}" for item in OBS_ITEMS])
-    rule = "\n판단 기준:\n- 매우 보수적으로 판단한다. 애매하면 무조건 false." if strict else "\n판단 기준:\n- 아주 명확할 때만 true. 애매하면 false."
-    return f"아래 항목을 이미지에서 관찰해 true/false로 채워 JSON만 출력해.\n{criteria_text}\n{rule}\n{BASE_CRITERIA}"
+    rule = "\n판단 기준:\n- 구조적 결함이 명확할 때만 true. 애매하면 false."
+    return f"Image 1은 검사 대상 이미지입니다.\n이 이미지에 결함이 있는지 아래 항목별로 판단해 JSON으로 출력하세요.\n{criteria_text}\n{rule}\n{BASE_CRITERIA}"
+
+def map_to_consolidated(details: dict) -> dict:
+    """Map granular LLM keys to Simplified Frontend keys"""
+    consolidated = {}
+    
+    # Mapping Rules
+    pkg_keys = ["package_damage", "misalignment_severe"]
+    
+    # Check for Package Defects
+    if any(details.get(k, False) for k in pkg_keys):
+        consolidated["defect_package"] = True
+        
+    # Check for Pin Defects (Everything else)
+    pin_found = False
+    for k, v in details.items():
+        if v and k not in pkg_keys:
+            pin_found = True
+            break
+    if pin_found:
+        consolidated["defect_pin"] = True
+            
+    return consolidated
 
 # Output Model
 class DefectOutput(BaseModel):
@@ -132,7 +183,16 @@ def run_agent_logic(img_url):
         print(msg)
         logs.append(msg)
 
-    log(f"Processing {img_url}...")
+    log(f"Processing {img_url} (Single Image Scan)...")
+
+    # Download image (Single Download)
+    try:
+        target_img = download_image(img_url)
+        if target_img is None:
+            raise Exception("Failed to download image")
+    except Exception as e:
+        log(f"Image download failed: {e}")
+        return {"label": 0, "confidence": 0.0, "logs": logs, "status": "error", "details": {}}
 
     # --- Step 1: Global Scan ---
     prompt_text_1 = build_prompt_text(strict=False)
@@ -144,68 +204,109 @@ def run_agent_logic(img_url):
     try:
         resp_1 = llm.invoke([HumanMessage(content=user_content_1)])
         result_1 = parser.parse(resp_1)
+        
+        raw_details = result_1.get('details', {})
+        detected = result_1.get('detected', False) or any(raw_details.values())
+        confidence = result_1.get('confidence', 0.5)
+        
+        log(f"Step 1 Result: {detected} ({confidence})")
+
+        # High confidence Defect -> Stop immediately
+        if detected and confidence >= 0.7:
+            log("Defect confirm (Global).")
+            # Map granular details to consolidated keys for Frontend
+            final_details = map_to_consolidated(raw_details)
+            return {"label": 1, "confidence": confidence, "logs": logs, "status": "completed", "details": final_details}
+    
     except Exception as e:
         log(f"Global scan failed: {e}")
-        return {"label": 0, "confidence": 0.0, "logs": logs, "status": "error"}
-
-    log(f"Step 1 Result: {result_1}")
-
-    # Check for direct pass/fail
-    detected = result_1.get('detected', False) or any(result_1.get('details', {}).values())
-    confidence = result_1.get('confidence', 0.5)
-
-    # 1. High confidence Defect (Global)
-    if detected and confidence > 0.8:
-        log("Defect confirm (Global).")
-        return {"label": 1, "confidence": confidence, "logs": logs, "status": "completed"}
+        return {"label": 0, "confidence": 0.0, "logs": logs, "status": "error", "details": {}}
     
     # 2. Relaxed threshold for Clean (Global)
-    # Lowered from 0.9 to 0.75 to reduce unnecessary precision scans
     if not detected and confidence >= 0.75:
         log("Clear normal (Global).")
-        return {"label": 0, "confidence": confidence, "logs": logs, "status": "completed"}
+        return {"label": 0, "confidence": confidence, "logs": logs, "status": "completed", "details": {}}
 
-    # --- Step 2: Ambiguous -> Precision Scan ---
-    log("Ambiguous result. Starting Precision Scan (Cropping)...")
+    # --- Step 2: Ambiguous -> Precision Scan (Vertical Split with Golden Comparison) ---
+    log("Ambiguous result. Starting Precision Scan (Golden Split Comparison)...")
     
     try:
-        img = download_image(img_url)
-        crops = crop_image_4(img)
+        # Download Golden Image (Target is already downloaded)
+        golden_img = download_image(GOLDEN_IMAGE_URL)
+        
+        if golden_img is None:
+             # If Golden fail, proceed with single image or error? let's error for consistency
+             raise Exception("Failed to download Golden Image")
+             
+        # Resize Golden to match Target (Align dimensions)
+        if target_img.shape != golden_img.shape:
+             golden_img = cv2.resize(golden_img, (target_img.shape[1], target_img.shape[0]))
+
+        target_crops = crop_image_split_vertical(target_img)
+        golden_crops = crop_image_split_vertical(golden_img)
+        
+        final_details = {} # Accumulate consolidated details
         detected_count = 0
         
-        prompt_text_2 = build_prompt_text(strict=True) # Stricter prompt
-        
-        for i, crop in enumerate(crops):
-            b64_img = encode_image(crop)
-            img_data_url = f"data:image/jpeg;base64,{b64_img}"
+        for i in range(2):
+            t_crop, region = target_crops[i]
+            g_crop, _ = golden_crops[i] # Golden corresponds to Target crops
             
+            t_b64 = encode_image(t_crop)
+            g_b64 = encode_image(g_crop)
+            
+            # Select Prompt and Map to Key
+            if region == "top":
+                current_consolidated_key = "defect_package"
+                region_prompt = """
+                [Region: TOP (Body Alignment Analysis)]
+                Image 1 (Golden): 정상 Reference (반듯한 정방형)
+                Image 2 (Target): 검사 대상
+                
+                판단 기준 (One of below -> True):
+                1. [회전/Rotation]: Golden 이미지 대비 Target이 5도 이상 비스듬하게 회전되어 있습니까?
+                2. [기울어짐/Tilt]: Golden 이미지의 모서리 직선과 비교했을 때, Target의 모서리가 평행하지 않습니까?
+                3. [파손/Breakage]: Body 표면에 명확한 크랙/깨짐이 있습니까?
+                """
+            else: # bottom
+                current_consolidated_key = "defect_pin"
+                region_prompt = """
+                [Region: BOTTOM (Pins Comparison)]
+                Image 1 (Golden): 정상 Pin (3개, 나란함, 은색)
+                Image 2 (Target): 검사 대상
+                
+                판단 기준 (One of below -> True):
+                1. [누락/Missing]: Golden에는 핀이 있는데 Target에는 없거나 끊겨 있습니까?
+                2. [쇼트/Short]: Target 핀이 서로 닿아 있습니까?
+                3. [이탈/Misplace]: 핀 끝이 구멍(Pad) 중앙에서 벗어나 있습니까?
+                """
+
             user_content_2 = [
-                {"type": "text", "text": f"Evaluate this CROP {i+1}/4 closely.\n{prompt_text_2}\n" + parser.get_format_instructions()},
-                {"type": "image_url", "image_url": {"url": img_data_url}}
+                {"type": "text", "text": f"{region_prompt}\n비교 분석하여 JSON으로 응답하세요 ({current_consolidated_key}: true/false).\n" + parser.get_format_instructions()},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{g_b64}"}}, # Image 1
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{t_b64}"}}  # Image 2
             ]
             
             resp_crop = llm.invoke([HumanMessage(content=user_content_2)])
             res_crop = parser.parse(resp_crop)
             
-            # Stricter filter for crops: must be detected AND have decent confidence
             crop_detected = res_crop.get('detected', False) or any(res_crop.get('details', {}).values())
             crop_conf = res_crop.get('confidence', 0)
             
-            log(f"Crop {i}: {crop_detected} ({crop_conf})")
+            log(f"Region {region.upper()}: {crop_detected} ({crop_conf})")
             
-            # Fix: Ignore low confidence defects in precision mode (hallucination filter)
-            if crop_detected and crop_conf > 0.7:
+            if crop_detected and crop_conf > 0.65: # Lowered slightly for comparison sensitivity
                 detected_count += 1
-
+                final_details[current_consolidated_key] = True
 
         final_label = 1 if detected_count > 0 else 0
-        log(f"Final Decision: {final_label} (Defects in {detected_count}/4 crops)")
+        log(f"Final Decision: {final_label} (Defects in {detected_count}/2 regions)")
         
-        return {"label": final_label, "confidence": 1.0 if final_label else 0.5, "logs": logs, "status": "completed"}
+        return {"label": final_label, "confidence": 1.0 if final_label else 0.5, "logs": logs, "status": "completed", "details": final_details}
 
     except Exception as e:
         log(f"Precision scan failed: {e}")
-        return {"label": 0, "confidence": 0.0, "logs": logs, "status": "error"}
+        return {"label": 0, "confidence": 0.0, "logs": logs, "status": "error", "details": {}}
 
 if __name__ == "__main__":
     run_agent_logic("https://cfiles.dacon.co.kr/competitions/236680_dev/DEV_000.png")

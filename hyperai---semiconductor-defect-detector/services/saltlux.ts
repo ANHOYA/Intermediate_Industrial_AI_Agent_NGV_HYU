@@ -27,17 +27,30 @@ export const observeImage = async (imgUrl: string, strict: boolean) => {
 
     const data = await response.json();
 
-    // Transform server response to match expected `obs` format
-    // Server returns "label": 1 (defect) or 0 (clean)
     const hasDefect = data.label === 1;
-
     const obs: Record<string, boolean> = {};
     KEYS.forEach(k => { obs[k] = false; });
 
     if (hasDefect) {
-      // Mark 'package_damage' as true to signal defect to the frontend logic
-      // This maps the single boolean result back to the detailed map structure
-      obs['package_damage'] = true;
+      // Map returned details to obs keys
+      if (data.details && typeof data.details === 'object') {
+        Object.keys(data.details).forEach(k => {
+          // Ensure key exists in our defined KEYS (defect_package, defect_pin)
+          // and value is truthy
+          if ((KEYS as unknown as string[]).includes(k) && data.details[k]) {
+            obs[k] = true;
+          }
+        });
+      }
+
+      // Fallback: If label is 1 but no details matched (e.g. edge case), 
+      // check if any key was set. If not, maybe defaulting is safer?
+      // But agent.py is designed to return details now.
+      // Let's at least log if mismatch happens
+      const anySet = Object.values(obs).some(v => v);
+      if (!anySet) {
+        console.warn("Server returned label=1 but no recognized details keys. data:", data);
+      }
     }
 
     return obs;

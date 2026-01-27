@@ -40,11 +40,8 @@ export interface AppState {
 }
 
 export const OBS_ITEMS = [
-  { key: "package_damage", desc: "크랙/파손/깨짐 등 패키지 손상" },
-  { key: "lead_missing_or_broken", desc: "리드 결손/단선" },
-  { key: "lead_severe_bend_or_contact", desc: "심한 휨 또는 리드끼리 접촉" },
-  { key: "solder_bridge_or_blob", desc: "솔더 브리지 또는 납땜 뭉침" },
-  { key: "misalignment_severe", desc: "소자 위치가 과도하게 틀어짐" },
+  { key: "defect_package", desc: "패키지 불량 (파손, 크랙, 정렬불량 등)" },
+  { key: "defect_pin", desc: "핀 불량 (결손, 휨, 솔더, 체결이상 등)" },
 ] as const;
 
 export const KEYS = OBS_ITEMS.map(item => item.key);

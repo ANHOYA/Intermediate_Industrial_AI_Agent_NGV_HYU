@@ -1,7 +1,6 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { CsvRow, AnalysisResult, LogEntry, AgentStats } from '../types';
-// import { DEFAULT_API_KEY } from '../constants';
 import { observeImage } from '../services/saltlux';
 
 export const useDefectAnalysis = () => {
@@ -83,9 +82,8 @@ export const useDefectAnalysis = () => {
     const handleStart = async () => {
         stopRef.current = false;
         setIsProcessing(true);
-        addLog('info', '--- BATCH STARTED (Concurrency: 5) ---');
-
         const BATCH_SIZE = 10;
+        addLog('info', `--- BATCH STARTED (Concurrency: ${BATCH_SIZE}) ---`);
 
         // Helper to process a batch
         const processBatch = async (batch: CsvRow[]) => {
