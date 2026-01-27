@@ -1,8 +1,10 @@
 import { OBS_ITEMS } from './types';
 
-export const DEFAULT_API_KEY = "2FsdGVkX19X953usgc0EhpzMqWH084Pdgr3GK+gWpOgYKHFM65EOQ0/czaUV7YeTpOZipFB8ljI5o9SFIUrTupKF+uudeCuxycL/yYBw6o/mxYpc+t8NooYKfRyamkpnoAPjd//xY1LorCyS1N5jE1nKZOCIFJjaYM50oD9G/J73+ugAClDpgdU7e96QZOe";
+// @ts-ignore
+export const DEFAULT_API_KEY = process.env.API_KEY || "2FsdGVkX19X953usgc0EhpzMqWH084Pdgr3GK+gWpOgYKHFM65EOQ0/czaUV7YeTpOZipFB8ljI5o9SFIUrTupKF+uudeCuxycL/yYBw6o/mxYpc+t8NooYKfRyamkpnoAPjd//xY1LorCyS1N5jE1nKZOCIFJjaYM50oD9G/J73+ugAClDpgdU7e96QZOe";
 
-export const BRIDGE_URL = "https://bridge.luxiacloud.com/llm/openai/chat/completions/gpt-4o-mini/create";
+// Proxy path mapping to https://bridge.luxiacloud.com/llm/openai/chat/completions/gpt-4o-mini/create
+export const BRIDGE_URL = "/api/luxia/llm/openai/chat/completions/gpt-4o-mini/create";
 export const MODEL = "gpt-4o-mini-2024-07-18";
 
 export const SYSTEM_PROMPT = `너는 반도체 소자 검사 이미지 분석기다.

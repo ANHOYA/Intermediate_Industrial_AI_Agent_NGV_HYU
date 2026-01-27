@@ -8,15 +8,19 @@ interface ChatMessage {
 
 export const postChat = async (messages: ChatMessage[], apiKey: string): Promise<string> => {
   try {
+    // Sanitize API Key (remove potential quotes loaded from env)
+    const cleanApiKey = apiKey.replace(/^['"]|['"]$/g, '');
+    console.debug("Saltlux API Request:", { BRIDGE_URL, cleanApiKey, messages });
     const response = await fetch(BRIDGE_URL, {
       method: 'POST',
       headers: {
-        'apikey': apiKey,
+        'apikey': cleanApiKey,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: MODEL,
         messages: messages,
+        max_tokens: 1024,
         stream: false
       })
     });
@@ -71,12 +75,12 @@ export const observeImage = async (imgUrl: string, strict: boolean, apiKey: stri
 
   const content = await postChat(messages, apiKey);
   const rawObs = safeJsonExtract(content);
-  
+
   // Normalize
   const obs: Record<string, boolean> = {};
   KEYS.forEach(k => {
     obs[k] = Boolean(rawObs[k]);
   });
-  
+
   return obs;
 };

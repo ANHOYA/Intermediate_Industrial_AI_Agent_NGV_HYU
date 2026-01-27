@@ -7,10 +7,10 @@ import { DEFAULT_API_KEY } from './constants';
 import { observeImage } from './services/saltlux';
 
 function App() {
-  const [apiKey, setApiKey] = useState(DEFAULT_API_KEY);
+  // const [apiKey, setApiKey] = useState(DEFAULT_API_KEY); // Removed in favor of Env Var
   const [isProcessing, setIsProcessing] = useState(false);
   const [shouldStop, setShouldStop] = useState(false);
-  
+
   const [rows, setRows] = useState<CsvRow[]>([]);
   const [results, setResults] = useState<Record<string, AnalysisResult>>({});
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -67,30 +67,30 @@ function App() {
     const defectCount = Object.values(obs).filter(Boolean).length;
     const label = defectCount >= 1 ? 1 : 0;
     // Uncertain if 0 (missed?) or 1 (false positive?)
-    const uncertain = defectCount === 0 || defectCount === 1; 
+    const uncertain = defectCount === 0 || defectCount === 1;
     return { label, uncertain, defectCount };
   };
 
   // Agent Logic: Core Workflow
   const processRow = async (row: CsvRow): Promise<AnalysisResult> => {
     addLog('info', `Processing ${row.id}...`);
-    
+
     try {
       // Step 1: Observe (Normal)
       addLog('info', `[${row.id}] Step 1: Initial Observation (Strict=False)`);
-      const obs1 = await observeImage(row.img_url, false, apiKey);
+      const obs1 = await observeImage(row.img_url, false, DEFAULT_API_KEY);
       const decision1 = decide(obs1);
-      
+
       let finalLabel: 0 | 1 = decision1.label as 0 | 1;
       let finalObs = obs1;
 
       // Step 2: Check Uncertainty
       if (decision1.uncertain) {
         addLog('warning', `[${row.id}] Uncertain result (defects=${decision1.defectCount}). Re-checking...`);
-        
+
         // Step 3: Observe (Strict)
         // strict=True: More conservative, "If ambiguous, false".
-        const obs2 = await observeImage(row.img_url, true, apiKey);
+        const obs2 = await observeImage(row.img_url, true, DEFAULT_API_KEY);
         const decision2 = decide(obs2);
 
         // Logic from baseline:
@@ -167,14 +167,14 @@ function App() {
         addLog('warning', 'Batch processing stopped by user.');
         break;
       }
-      
+
       // Skip if already done? No, let's re-run or maybe simple skip. 
       // Let's re-run for this demo to allow retries.
-      
+
       setCurrentProcessingId(row.id);
-      
+
       await processRow(row);
-      
+
       // Rate limit sleep (200ms)
       await new Promise(r => setTimeout(r, 200));
     }
@@ -194,10 +194,10 @@ function App() {
     const csvContent = rows.map(row => {
       const res = results[row.id];
       // Default to 0 if not processed
-      const label = res ? res.label : 0; 
+      const label = res ? res.label : 0;
       return `${row.id},${label}`;
     }).join("\n");
-    
+
     const blob = new Blob([header + csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -219,9 +219,7 @@ function App() {
 
   return (
     <div className="flex h-screen w-full bg-gray-100 overflow-hidden font-sans">
-      <Sidebar 
-        apiKey={apiKey}
-        setApiKey={setApiKey}
+      <Sidebar
         onUpload={handleUpload}
         stats={stats}
         isProcessing={isProcessing}
@@ -248,10 +246,10 @@ function App() {
         {/* Content */}
         <div className="flex-1 p-8 flex flex-col gap-6 min-h-0">
           <LogViewer logs={logs} />
-          <ResultTable 
-            rows={rows} 
-            results={results} 
-            currentProcessingId={currentProcessingId} 
+          <ResultTable
+            rows={rows}
+            results={results}
+            currentProcessingId={currentProcessingId}
           />
         </div>
       </main>
