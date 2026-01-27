@@ -1,7 +1,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { CsvRow, AnalysisResult, LogEntry, AgentStats } from '../types';
-import { DEFAULT_API_KEY } from '../constants';
+// import { DEFAULT_API_KEY } from '../constants';
 import { observeImage } from '../services/saltlux';
 
 export const useDefectAnalysis = () => {
@@ -35,7 +35,7 @@ export const useDefectAnalysis = () => {
 
         try {
             addLog('info', `[${row.id}] Step 1: Initial Observation (Strict=False)`);
-            const obs1 = await observeImage(row.img_url, false, DEFAULT_API_KEY);
+            const obs1 = await observeImage(row.img_url, false);
             const decision1 = decide(obs1);
 
             let finalLabel: 0 | 1 = decision1.label as 0 | 1;
@@ -44,7 +44,7 @@ export const useDefectAnalysis = () => {
             if (decision1.uncertain) {
                 addLog('warning', `[${row.id}] Uncertain result (defects=${decision1.defectCount}). Re-checking...`);
 
-                const obs2 = await observeImage(row.img_url, true, DEFAULT_API_KEY);
+                const obs2 = await observeImage(row.img_url, true);
                 const decision2 = decide(obs2);
 
                 if (decision2.label === 1) {

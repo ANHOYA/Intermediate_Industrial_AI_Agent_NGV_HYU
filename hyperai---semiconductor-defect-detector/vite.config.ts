@@ -8,14 +8,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      proxy: {
-        '/api/luxia': {
-          target: 'https://bridge.luxiacloud.com',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/luxia/, ''),
-          secure: false
-        }
-      },
+      proxy: {},
     },
     plugins: [react()],
     define: {
