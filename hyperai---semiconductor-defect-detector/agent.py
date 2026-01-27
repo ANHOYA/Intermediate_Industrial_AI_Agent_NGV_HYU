@@ -28,7 +28,8 @@ GOLDEN_IMAGE_URL = "https://cfiles.dacon.co.kr/competitions/236680_dev/DEV_003.p
 BASE_CRITERIA = """
 파손되지 않은 트랜지스터가 제대로 설치되었는지 확인합니다.
 트랜지스터는 검정색 패키지 아래에 은식 핀이 3개 존재합니다.
-각 핀은 하단 중앙 3개의 구멍에 3개의 핀에 각각 하나씩 정확히 설치되어있어야 하며 검정색 패키지도 중앙에 삐뚤지 않게 설치되어야 합니다.
+각 핀은 하단 중앙 3개의 구멍에 3개의 핀에 각각 하나씩 정확히 설치되어있어야 합니다.
+검정색 패키지가 중앙에 삐뚤지 않게 설치되어야 합니다.
 정상이면 False, 결함이 있으면 True를 반환합니다.
 
 상세 판단 가이드:
@@ -248,15 +249,13 @@ def run_agent_logic(img_url):
             else: # bottom
                 current_consolidated_key = "defect_pin"
                 region_prompt = """
-                [Region: BOTTOM (Pins Comparison)]
-                Image 1: 검사 대상 (Bottom Part)
-                
-                판단 기준 (One of below -> True):
-                1. [누락/Missing]: 핀이 부러지거나(Broken) 아예 없습니까(Missing)?
-                2. [쇼트/Short]: 핀끼리 서로 닿아 있거나(Touching) 납땜이 뭉쳐 있습니까(Solder Blob)?
-                3. [이탈/Misplace]: 핀이 하단 중앙 3개 패드(구멍)에 모두 체결되어있습니까?
-                """
-            
+                - 핀끼리 서로 닿거나 겹쳐 있는 경우 True
+                - 핀의 끝부분이 패드(구멍)의 정위치에서 벗어나 있는 경우 True
+                - 핀이 절단(Broken)되어 있거나, 뿌리 부분만 남고 잘려 나간 경우 True
+                - 핀 자체가 아예 없는 경우 True
+                - 정상적인 핀 개수(3개)보다 적은 경우 True
+                - 하단 중앙 세개의 구멍에 세개의 핀이 하니씩 설치되지 않은 경우 True
+            """
             # Standard output format
             user_content_2 = [
                 {"type": "text", "text": f"{region_prompt}\n정밀 분석하여 JSON으로 응답하세요 ({current_consolidated_key}: true/false).\n" + parser.get_format_instructions()},
@@ -275,8 +274,8 @@ def run_agent_logic(img_url):
                 detected_count += 1
                 final_details[current_consolidated_key] = True
                 # 여기 효율성 올릴려고 추가한 부분 / 다 돌리고 싶으면 냅두면 됨
-                log(f"Defect found in {region.upper()}. Stopping further checks.")
-                break # Optimize: Stop scanning if defect is already found
+                # log(f"Defect found in {region.upper()}. Stopping further checks.")
+                # break # Optimize: Stop scanning if defect is already found
 
         final_label = 1 if detected_count > 0 else 0
         log(f"Final Decision: {final_label} (Defects in {detected_count}/2 regions)")
