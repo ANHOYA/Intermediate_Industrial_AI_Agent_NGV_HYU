@@ -1,0 +1,6 @@
+.env
+user_file
+.conda
+.venv
+__pycache__
+hyperai---semiconductor-defect-detector/__pycache__
