@@ -26,42 +26,32 @@ GOLDEN_IMAGE_URL = "https://cfiles.dacon.co.kr/competitions/236680_dev/DEV_003.p
 
 # Detailed Prompt Criteria (Granular for LLM Accuracy)
 BASE_CRITERIA = """
+파손되지 않은 트랜지스터가 제대로 설치되었는지 확인합니다.
+트랜지스터는 검정색 패키지 아래에 은식 핀이 3개 존재합니다.
+각 핀은 하단 중앙 3개의 구멍에 3개의 핀에 각각 하나씩 정확히 설치되어있어야 하며 검정색 패키지도 중앙에 삐뚤지 않게 설치되어야 합니다.
+정상이면 False, 결함이 있으면 True를 반환합니다.
+
 상세 판단 가이드:
-    1. 핀 체결 판단 (Category: pin):
-        - 하단 중앙의 세개의 구멍에 모든 핀이 체결되어잇으면 False
-        - [중요] 하나라도 빠져나가거나 누락된 핀이 있으면 True
-    
-    2. 패키지(Body) [파손] 판단 (Category: package_damage):
-        - 본체 모서리가 깨져서 날아갔거나(Chipped)
-        - 표면에 깊은 균열(Crack)이나 구멍이 뚫린 경우
+    패키지 판단[key: package_damage or misalignment_severe]:
+        - 본체의 모서리가 이미지 프레임과 평행하지 않고 삐뚤어져 있으면 True
+        -소자가 중앙 정위치를 크게 벗어나 있으면 True
+        - 본체 모서리가 깨져서 날아간 경우 True
+        - 표면에 깊은 균열이나 구멍이 뚫린 경우 True
         - (주의: 단순 회전이나 기울어짐은 여기에 해당하지 않음)
-
-    3. 소자 [정렬] 판단 (Category: misalignment_severe):
-        - [회전/Rotation]: 검은색 사각형이 반듯하지 않고, 시계/반시계 방향으로 5도 이상 비스듬하게 회전되어 있습니까?
-        - [기울어짐/Tilt]: 본체의 모서리가 이미지 프레임과 평행하지 않고 삐뚤어져 있습니까?
-        - [위치 이탈]: 소자가 중앙 정위치를 크게 벗어나 있습니까?
    
-    4. 리드 [결손/단선] 판단 (Category: lead_missing_or_broken):
-        - 핀이 절단(Broken)되어 있거나, 뿌리 부분만 남고 잘려 나간 경우.
-        - 핀 자체가 아예 없는(Missing) 경우.
-        - 정상적인 핀 개수(3개)보다 적은 경우.
-
-    5. 리드 판단 (Category: lead_severe_bend_or_contact):
-        - 핀끼리 서로 닿거나(Touching) 겹쳐 있는 경우.
-        - 핀의 끝부분이 패드(구멍)의 정위치에서 벗어나(Off-pad) 있는 경우.
-        
-    6. 솔더 판단 (Category: solder_bridge_or_blob):
-        - 핀 사이가 납(Solder)으로 이어져 있어 합선(Short)이 의심되는 경우.
-        - 솔더가 뭉쳐서(Blob) 핀 사이를 메우고 있는 경우.
+    핀 판단[key: pin_missing_or_broken_or_short]:
+        - 핀끼리 서로 닿거나 겹쳐 있는 경우 True
+        - 핀의 끝부분이 패드(구멍)의 정위치에서 벗어나 있는 경우 True
+        - 핀이 절단(Broken)되어 있거나, 뿌리 부분만 남고 잘려 나간 경우 True
+        - 핀 자체가 아예 없는 경우 True
+        - 정상적인 핀 개수(3개)보다 적은 경우 True
+        - 하단 중앙 세개의 구멍에 세개의 핀이 하니씩 설치되지 않은 경우 True
 """
 
 OBS_ITEMS = [
   {"key": "package_damage", "desc": "패키지 파손/크랙"},
-  {"key": "lead_missing_or_broken", "desc": "리드 결손/단선"},
-  {"key": "lead_severe_bend_or_contact", "desc": "심한 휨/접촉"},
-  {"key": "solder_bridge_or_blob", "desc": "솔더 브리지/뭉침"},
-  {"key": "misalignment_severe", "desc": "패키지 위치 틀어짐"},
-  {"key": "pin", "desc": "핀이 체결되지 않음"}
+  {"key": "pin_missing_or_broken_or_short", "desc": "핀 결손/단선/접촉"},
+  {"key": "misalignment_severe", "desc": "패키지 위치 틀어짐"}
 ]
 
 # Robust LLM Wrapper with Retry
@@ -247,13 +237,13 @@ def run_agent_logic(img_url):
             if region == "top":
                 current_consolidated_key = "defect_package"
                 region_prompt = """
-                [Region: TOP (Body Alignment Analysis)]
+                [Region: TOP (Package Alignment Analysis)]
                 Image 1: 검사 대상 (Top Part)
                 
                 판단 기준 (One of below -> True):
                 1. [회전/Rotation]: 검은색 본체가 프레임에 대해 5도 이상 비스듬하게 회전되어 있습니까?
                 2. [기울어짐/Tilt]: 본체 모서리가 프레임과 평행하지 않고 삐뚤어져 있습니까?
-                3. [파손/Breakage]: Body 표면에 명확한 크랙/깨짐이 있습니까?
+                3. [파손/Breakage]: 패키지 표면에 명확한 크랙/깨짐이 있습니까?
                 """
             else: # bottom
                 current_consolidated_key = "defect_pin"
@@ -264,7 +254,7 @@ def run_agent_logic(img_url):
                 판단 기준 (One of below -> True):
                 1. [누락/Missing]: 핀이 부러지거나(Broken) 아예 없습니까(Missing)?
                 2. [쇼트/Short]: 핀끼리 서로 닿아 있거나(Touching) 납땜이 뭉쳐 있습니까(Solder Blob)?
-                3. [이탈/Misplace]: 핀이 정위치(Pad 중앙)에서 벗어나 있습니까?
+                3. [이탈/Misplace]: 핀이 하단 중앙 3개 패드(구멍)에 모두 체결되어있습니까?
                 """
             
             # Standard output format
@@ -284,6 +274,7 @@ def run_agent_logic(img_url):
             if crop_detected and crop_conf > 0.65:
                 detected_count += 1
                 final_details[current_consolidated_key] = True
+                # 여기 효율성 올릴려고 추가한 부분 / 다 돌리고 싶으면 냅두면 됨
                 log(f"Defect found in {region.upper()}. Stopping further checks.")
                 break # Optimize: Stop scanning if defect is already found
 
