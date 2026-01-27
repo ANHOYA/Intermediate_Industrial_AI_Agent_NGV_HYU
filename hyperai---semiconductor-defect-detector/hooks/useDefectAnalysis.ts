@@ -83,17 +83,29 @@ export const useDefectAnalysis = () => {
     const handleStart = async () => {
         stopRef.current = false;
         setIsProcessing(true);
-        addLog('info', '--- BATCH STARTED ---');
+        addLog('info', '--- BATCH STARTED (Concurrency: 5) ---');
 
-        for (const row of rows) {
+        const BATCH_SIZE = 5;
+
+        // Helper to process a batch
+        const processBatch = async (batch: CsvRow[]) => {
+            const promises = batch.map(row => processRow(row));
+            await Promise.all(promises);
+        };
+
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
             if (stopRef.current) {
                 addLog('warning', 'Batch processing stopped by user.');
                 break;
             }
 
-            setCurrentProcessingId(row.id);
-            await processRow(row);
-            await new Promise(r => setTimeout(r, 200));
+            const batch = rows.slice(i, i + BATCH_SIZE);
+            setCurrentProcessingId(`Batch ${Math.floor(i / BATCH_SIZE) + 1}`); // Just for UI indication
+
+            await processBatch(batch);
+
+            // Small breathing room between batches
+            await new Promise(r => setTimeout(r, 100));
         }
 
         setCurrentProcessingId(null);

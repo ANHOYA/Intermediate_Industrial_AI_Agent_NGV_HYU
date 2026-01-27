@@ -87,26 +87,48 @@ export const safeJsonExtract = (text: string): Record<string, boolean> => {
 };
 
 export const observeImage = async (imgUrl: string, strict: boolean, apiKey: string) => {
-  const promptText = buildPrompt(strict);
-  const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    {
-      role: "user",
-      content: [
-        { type: "text", text: promptText },
-        { type: "image_url", image_url: { url: imgUrl } }
-      ]
+  // Call local Python Server
+  const SERVER_URL = "http://localhost:8000/analyze";
+
+  // We use a dummy ID since `observeImage` signature doesn't pass ID, but server expects it.
+  // Ideally we refactor `observeImage` to take an ID or generate one.
+  const dummyId = "req_" + Math.random().toString(36).substring(7);
+
+  try {
+    const response = await fetch(SERVER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: dummyId,
+        img_url: imgUrl
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server Error: ${response.status}`);
     }
-  ];
 
-  const content = await postChat(messages, apiKey);
-  const rawObs = safeJsonExtract(content);
+    const data = await response.json();
 
-  // Normalize
-  const obs: Record<string, boolean> = {};
-  KEYS.forEach(k => {
-    obs[k] = Boolean(rawObs[k]);
-  });
+    // Transform server response to match expected `obs` format
+    // Server returns "label": 1 (defect) or 0 (clean)
+    // We map this back to implicit observation flags for compatibility
+    const hasDefect = data.label === 1;
 
-  return obs;
+    // If defect, set a generic "defect_detected" flag to true
+    // If clean, all false
+    const obs: Record<string, boolean> = {};
+    KEYS.forEach(k => { obs[k] = false; });
+
+    if (hasDefect) {
+      // Mark at least one as true to signal defect to the frontend logic
+      obs['package_damage'] = true;
+    }
+
+    return obs;
+
+  } catch (e) {
+    console.error("Agent Server Failed:", e);
+    throw e;
+  }
 };
