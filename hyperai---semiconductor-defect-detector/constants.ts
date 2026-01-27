@@ -17,9 +17,15 @@ export const buildPrompt = (strict: boolean): string => {
 
   const jsonTemplate = "{\n" + OBS_ITEMS.map(item => `  "${item.key}": false`).join(",\n") + "\n}";
 
+  const baseRule = `
+상세 판단 가이드:
+1. 핀이 확실하게 빠져있거나 절단 되거나 파손 된 경우에 해당 항목을 True로 설정한다.
+2. 트랜지스터가 반듯하게 놓이지 않고 삐뚫은 경우, 파손 된 경우에는 해당 항목을 True로 설정한다.
+`;
+
   const rule = strict
-    ? "\n판단 기준:\n- 매우 보수적으로 판단한다. 애매하면 무조건 false.\n"
-    : "\n판단 기준:\n- 아주 명확할 때만 true. 애매하면 false.\n";
+    ? "\n판단 기준:\n- 매우 보수적으로 판단한다. 애매하면 무조건 false." + baseRule
+    : "\n판단 기준:\n- 아주 명확할 때만 true. 애매하면 false." + baseRule;
 
   const criteria = OBS_ITEMS.map(item => `- ${item.key}: ${item.desc}`).join("\n");
 
