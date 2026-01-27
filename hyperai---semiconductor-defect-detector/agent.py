@@ -24,8 +24,19 @@ BRIDGE_ENDPOINT = "https://bridge.luxiacloud.com/llm/openai/chat/completions/gpt
 # Detailed Prompt Criteria (Synced from Frontend)
 BASE_CRITERIA = """
 상세 판단 가이드:
-1. 핀이 확실하게 빠져있거나 절단 되거나 파손 된 경우에 해당 항목을 True로 설정한다.
-2. 트랜지스터가 반듯하게 놓이지 않고 삐뚫은 경우, 파손 된 경우에는 해당 항목을 True로 설정한다.
+    핀 : 
+        1. 핀이 확실하게 빠져있거나 절단 되거나 파손 된 경우에 해당 항목을 True로 설정한다.
+    패키지 : 
+        1. 크랙/파손/깨짐 등 패키지 손상이 있는 경우에 해당 항목을 True로 설정한다.
+    리드 : 
+        1. 리드 결손/단선이 있는 경우에 해당 항목을 True로 설정한다.
+    휨 : 
+        1. 리드끼리 접촉이 있는 경우에 해당 항목을 True로 설정한다.
+    솔더 : 
+        1. 솔더 브리지 또는 납땜 뭉침이 있는 경우에 해당 항목을 True로 설정한다.
+    소자 : 
+        1. 소자 위치가 과도하게 틀어짐이 있는 경우에 해당 항목을 True로 설정한다.
+        2. 소자가 파손 된 경우에는 해당 항목을 True로 설정한다.
 """
 
 OBS_ITEMS = [

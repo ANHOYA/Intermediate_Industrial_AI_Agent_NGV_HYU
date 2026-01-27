@@ -85,7 +85,7 @@ export const useDefectAnalysis = () => {
         setIsProcessing(true);
         addLog('info', '--- BATCH STARTED (Concurrency: 5) ---');
 
-        const BATCH_SIZE = 5;
+        const BATCH_SIZE = 10;
 
         // Helper to process a batch
         const processBatch = async (batch: CsvRow[]) => {
