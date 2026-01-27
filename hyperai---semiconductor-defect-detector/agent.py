@@ -212,7 +212,7 @@ def run_agent_logic(img_url):
         log(f"Step 1 Result: {detected} ({confidence})")
 
         # High confidence Defect -> Stop immediately
-        if detected and confidence >= 0.7:
+        if detected and confidence >= 0.6:
             log("Defect confirm (Global).")
             # Map granular details to consolidated keys for Frontend
             final_details = map_to_consolidated(raw_details)
@@ -227,64 +227,50 @@ def run_agent_logic(img_url):
         log("Clear normal (Global).")
         return {"label": 0, "confidence": confidence, "logs": logs, "status": "completed", "details": {}}
 
-    # --- Step 2: Ambiguous -> Precision Scan (Vertical Split with Golden Comparison) ---
-    log("Ambiguous result. Starting Precision Scan (Golden Split Comparison)...")
+    # --- Step 2: Ambiguous -> Precision Scan (Vertical Split - Single Image) ---
+    log("Ambiguous result. Starting Precision Scan (Vertical Split)...")
     
     try:
-        # Download Golden Image (Target is already downloaded)
-        golden_img = download_image(GOLDEN_IMAGE_URL)
-        
-        if golden_img is None:
-             # If Golden fail, proceed with single image or error? let's error for consistency
-             raise Exception("Failed to download Golden Image")
-             
-        # Resize Golden to match Target (Align dimensions)
-        if target_img.shape != golden_img.shape:
-             golden_img = cv2.resize(golden_img, (target_img.shape[1], target_img.shape[0]))
+        # Note: Target image is already downloaded in target_img
 
         target_crops = crop_image_split_vertical(target_img)
-        golden_crops = crop_image_split_vertical(golden_img)
         
         final_details = {} # Accumulate consolidated details
         detected_count = 0
         
         for i in range(2):
             t_crop, region = target_crops[i]
-            g_crop, _ = golden_crops[i] # Golden corresponds to Target crops
             
             t_b64 = encode_image(t_crop)
-            g_b64 = encode_image(g_crop)
             
-            # Select Prompt and Map to Key
+            # Select Prompt
             if region == "top":
                 current_consolidated_key = "defect_package"
                 region_prompt = """
                 [Region: TOP (Body Alignment Analysis)]
-                Image 1 (Golden): 정상 Reference (반듯한 정방형)
-                Image 2 (Target): 검사 대상
+                Image 1: 검사 대상 (Top Part)
                 
                 판단 기준 (One of below -> True):
-                1. [회전/Rotation]: Golden 이미지 대비 Target이 5도 이상 비스듬하게 회전되어 있습니까?
-                2. [기울어짐/Tilt]: Golden 이미지의 모서리 직선과 비교했을 때, Target의 모서리가 평행하지 않습니까?
+                1. [회전/Rotation]: 검은색 본체가 프레임에 대해 5도 이상 비스듬하게 회전되어 있습니까?
+                2. [기울어짐/Tilt]: 본체 모서리가 프레임과 평행하지 않고 삐뚤어져 있습니까?
                 3. [파손/Breakage]: Body 표면에 명확한 크랙/깨짐이 있습니까?
                 """
             else: # bottom
                 current_consolidated_key = "defect_pin"
                 region_prompt = """
                 [Region: BOTTOM (Pins Comparison)]
-                Image 1 (Golden): 정상 Pin (3개, 나란함, 은색)
-                Image 2 (Target): 검사 대상
+                Image 1: 검사 대상 (Bottom Part)
                 
                 판단 기준 (One of below -> True):
-                1. [누락/Missing]: Golden에는 핀이 있는데 Target에는 없거나 끊겨 있습니까?
-                2. [쇼트/Short]: Target 핀이 서로 닿아 있습니까?
-                3. [이탈/Misplace]: 핀 끝이 구멍(Pad) 중앙에서 벗어나 있습니까?
+                1. [누락/Missing]: 핀이 부러지거나(Broken) 아예 없습니까(Missing)?
+                2. [쇼트/Short]: 핀끼리 서로 닿아 있거나(Touching) 납땜이 뭉쳐 있습니까(Solder Blob)?
+                3. [이탈/Misplace]: 핀이 정위치(Pad 중앙)에서 벗어나 있습니까?
                 """
-
+            
+            # Standard output format
             user_content_2 = [
-                {"type": "text", "text": f"{region_prompt}\n비교 분석하여 JSON으로 응답하세요 ({current_consolidated_key}: true/false).\n" + parser.get_format_instructions()},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{g_b64}"}}, # Image 1
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{t_b64}"}}  # Image 2
+                {"type": "text", "text": f"{region_prompt}\n정밀 분석하여 JSON으로 응답하세요 ({current_consolidated_key}: true/false).\n" + parser.get_format_instructions()},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{t_b64}"}}  # Single Image
             ]
             
             resp_crop = llm.invoke([HumanMessage(content=user_content_2)])
@@ -295,9 +281,11 @@ def run_agent_logic(img_url):
             
             log(f"Region {region.upper()}: {crop_detected} ({crop_conf})")
             
-            if crop_detected and crop_conf > 0.65: # Lowered slightly for comparison sensitivity
+            if crop_detected and crop_conf > 0.65:
                 detected_count += 1
                 final_details[current_consolidated_key] = True
+                log(f"Defect found in {region.upper()}. Stopping further checks.")
+                break # Optimize: Stop scanning if defect is already found
 
         final_label = 1 if detected_count > 0 else 0
         log(f"Final Decision: {final_label} (Defects in {detected_count}/2 regions)")
