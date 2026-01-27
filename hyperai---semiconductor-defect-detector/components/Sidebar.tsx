@@ -1,23 +1,30 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { AgentStats } from '../types';
 
 interface SidebarProps {
   onUpload: (content: string) => void;
+  onLabeledUpload?: (content: string) => void;
   stats: AgentStats;
   isProcessing: boolean;
   onStart: () => void;
   onStop: () => void;
   onDownload: () => void;
+  isDevMode?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   onUpload,
+  onLabeledUpload,
   stats,
   isProcessing,
   onStart,
   onStop,
-  onDownload
+  onDownload,
+  isDevMode = false
 }) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [labeledFile, setLabeledFile] = useState<File | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,6 +116,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               Stop Process
             </button>
+          )}
+
+          {/* Dev Mode Labeled Data Upload */}
+          {isDevMode && onLabeledUpload && (
+            <div className="space-y-2 pt-4 border-t border-gray-200">
+              <label className="text-sm font-medium text-orange-700">Labeled Data (GT)</label>
+              <div className="text-xs text-gray-500 mb-1">Evaluating against Ground Truth</div>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  setLabeledFile(f);
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    const content = event.target?.result as string;
+                    onLabeledUpload(content);
+                  };
+                  reader.readAsText(f);
+                }}
+                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+              />
+            </div>
           )}
 
           <button
