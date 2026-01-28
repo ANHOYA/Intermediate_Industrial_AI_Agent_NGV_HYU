@@ -1,7 +1,8 @@
 # HyperAI - 반도체 결함 탐지 AI 에이전트 (Semiconductor Defect Detector)
 
+## 📸 WEB UI ScreenShot
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+<img width="100%" alt="GHBanner" src="image.png" />
 </div>
 
 ## 📖 프로젝트 개요
@@ -61,25 +62,25 @@
 
 ```mermaid
 graph TD
-    User[User / Web UI] -->|Upload Image| Server[FastAPI Server]
-    Server -->|Trigger| Agent[AI Agent logic]
+    User["User / Web UI"] -->|Upload Image| Server["FastAPI Server"]
+    Server -->|Trigger| Agent["AI Agent logic"]
     
     subgraph "AI Agent Pipeline"
-        Step0[Step 0: OpenCV Edge Check] -->|Pass| Step1
-        Step0 -->|Fail (Severe)| Result[Defect Detected]
+        Step0["Step 0: OpenCV Edge Check"] -->|Pass| Step1
+        Step0 -->|"Fail (Severe)"| Result["Defect Detected"]
         
-        Step1[Step 1: Global LLM Scan] -->|Ambiguous| Step1_5
-        Step1 -->|Clear Defect/Normal| Result
+        Step1["Step 1: Global LLM Scan"] -->|Ambiguous| Step1_5
+        Step1 -->|"Clear Defect/Normal"| Result
         
-        Step1_5[Step 1.5: Pin Edge Analysis] -->|Pass| Step2
+        Step1_5["Step 1.5: Pin Edge Analysis"] -->|Pass| Step2
         Step1_5 -->|Fail| Result
         
-        Step2[Step 2: Precision Split Scan] -->|Top/Bottom Crops| LLM[LLM (GPT-4o)]
-        LLM -->|Final Judgment| Result
+        Step2["Step 2: Precision Split Scan"] -->|"Top/Bottom Crops"| LLM["LLM (GPT-4o)"]
+        LLM -->|"Final Judgment"| Result
     end
     
-    Result -->|JSON Response| Server
-    Server -->|Update Dashboard| User
+    Result -->|"JSON Response"| Server
+    Server -->|"Update Dashboard"| User
 ```
 
 ---
@@ -104,9 +105,10 @@ npm run dev
 ### 2. Backend Setup
 ```bash
 # Python 의존성 설치 (가상환경 권장)
-pip install fastapi uvicorn langchain langchain-openai opencv-python numpy python-dotenv requests
+pip install -r requirements.txt
 
 # 환경 변수 설정 (.env 파일 생성)
+# hyperai---semiconductor-defect-detector 폴더 내에 .env 파일 생성
 # API_KEY=your_api_key_here
 
 # 서버 실행

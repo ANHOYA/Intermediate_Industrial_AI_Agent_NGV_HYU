@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+langchain
+langchain-openai
+opencv-python
+numpy
+python-dotenv
+requests
+pydantic
