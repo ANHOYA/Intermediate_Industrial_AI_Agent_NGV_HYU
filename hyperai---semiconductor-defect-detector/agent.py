@@ -282,8 +282,8 @@ def encode_image(img):
 
 def build_prompt_text(strict=False):
     criteria_text = "\n".join([f"- {item['key']}: {item['desc']}" for item in OBS_ITEMS])
-    rule = "\nJudgment Criteria:\n- True only if structural defect is clear. False if ambiguous."
-    return f"Image 1 is the inspection target.\nDetermine if there are defects in this image for each item below and output as JSON.\n{criteria_text}\n{rule}\n{BASE_CRITERIA}"
+    rule = "\nJudgment Criteria:\n- Compare Image 1 (Target) with Image 2 (Golden Reference).\n- Return True ONLY if there is a significant structural difference (Defect).\n- Return False if they look similar or if the difference is ambiguous."
+    return f"Image 1 is the inspection target.\nImage 2 is the Golden Reference (Normal Product).\nCompare them and determine if there are defects in Image 1 based on the items below.\nOutput as JSON.\n{criteria_text}\n{rule}\n{BASE_CRITERIA}"
 
 def map_to_consolidated(details: dict) -> dict:
     """Map granular LLM keys to Simplified Frontend keys"""
@@ -467,11 +467,17 @@ def run_agent_logic(img_url):
     except Exception as e:
         log(f"Step 0 Failed: {e}. Proceeding to LLM.")
 
-    # --- Step 1: Global Scan ---
+    # --- Step 1: Global Scan (Golden Comparison) ---
     prompt_text_1 = build_prompt_text(strict=False)
+    
+    # Enable Golden Image Comparison
+    t_b64 = encode_image(target_img)
+    g_b64 = encode_image(golden_img)
+    
     user_content_1 = [
         {"type": "text", "text": prompt_text_1 + "\n" + parser.get_format_instructions()},
-        {"type": "image_url", "image_url": {"url": img_url}}
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{t_b64}"}},   # Image 1 (Target)
+        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{g_b64}"}}    # Image 2 (Golden)
     ]
     
     try:
@@ -485,7 +491,7 @@ def run_agent_logic(img_url):
         log(f"Step 1 Result: {detected} ({confidence})")
 
         # High confidence Defect -> Stop immediately
-        if detected and confidence >= 0.6:
+        if detected and confidence >= 0.85:
             log("Defect confirm (Global).")
             # Map granular details to consolidated keys for Frontend
             final_details = map_to_consolidated(raw_details)
@@ -496,7 +502,8 @@ def run_agent_logic(img_url):
         return {"label": 0, "confidence": 0.0, "logs": logs, "status": "error", "details": {}}
     
     # 2. Relaxed threshold for Clean (Global)
-    if not detected and confidence >= 0.75:
+    # Lowering slightly to 0.90 to avoid aggressive Step 2 for clearly good images.
+    if not detected and confidence >= 0.90:
         log("Clear normal (Global).")
         return {"label": 0, "confidence": confidence, "logs": logs, "status": "completed", "details": {}}
 
