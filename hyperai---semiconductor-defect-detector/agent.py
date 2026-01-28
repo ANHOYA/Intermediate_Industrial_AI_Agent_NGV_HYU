@@ -76,7 +76,6 @@ Detailed Judgment Guide:
         - True if the device is significantly off-center.
         - True if the body corners are broken or chipped.
         - True if there are deep cracks or holes on the surface.
-        - (Note: Simple rotation or slight tilt does not apply here unless severe)
    
     Pin Judgment [key: pin_missing_or_broken_or_short]:
         - True if pins are touching or overlapping each other.
