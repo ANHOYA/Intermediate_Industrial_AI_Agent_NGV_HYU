@@ -32,7 +32,7 @@ class AnalyzeResponse(BaseModel):
     details: dict = {}
 
 @app.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_image(req: AnalyzeRequest):
+def analyze_image(req: AnalyzeRequest):
     logger.info(f"Received request for {req.id}: {req.img_url}")
     try:
         # Run the LangChain logic

@@ -82,7 +82,7 @@ export const useDefectAnalysis = () => {
     const handleStart = async () => {
         stopRef.current = false;
         setIsProcessing(true);
-        const BATCH_SIZE = 10;
+        const BATCH_SIZE = 100;
         addLog('info', `--- BATCH STARTED (Concurrency: ${BATCH_SIZE}) ---`);
 
         // Helper to process a batch
