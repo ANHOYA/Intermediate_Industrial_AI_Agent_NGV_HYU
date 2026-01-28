@@ -1,16 +1,22 @@
 # HyperAI - 반도체 결함 탐지 AI 에이전트 (Semiconductor Defect Detector)
 
-## 📸 WEB UI ScreenShot
-<div align="center">
-<img width="100%" alt="GHBanner" src="image.png" />
-</div>
-
 ## 📖 프로젝트 개요
 **HyperAI 반도체 결함 탐지기**는 멀티모달(Multi-modal) AI 기술을 활용하여 반도체 제조 공정에서 발생하는 결함을 정밀하게 분석하고 탐지하는 **AI Agent**입니다.
 
 기존의 단순 컴퓨터 비전 기술을 넘어, **LangChain** 프레임워크와 **GPT-4o 기반의 Vision LLM**을 결합하여 이미지의 미세한 구조적 결함뿐만 아니라 문맥적인 결함(핀 휨, 패키지 파손 등)까지 사람처럼 추론하고 판단합니다.
 
 직관적인 **Web UI**를 통해 분석 결과를 실시간으로 모니터링하고, 로그를 통해 AI의 추론 과정을 투명하게 확인할 수 있습니다. 또한, 프롬프트 엔지니어링을 통해 누구나 쉽게 탐지 로직을 수정하고 성능을 지속적으로 개선할 수 있도록 설계되었습니다.
+
+## 📸 WEB UI ScreenShot
+<div align="center">
+<img width="100%" alt="GHBanner" src="image.png" />
+</div>
+
+---
+
+<div align="center">
+<img width="100%" alt="GHBanner" src="contest.png" />
+</div>
 
 ---
 
