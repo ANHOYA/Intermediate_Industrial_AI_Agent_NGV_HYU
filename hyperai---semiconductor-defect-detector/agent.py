@@ -21,38 +21,76 @@ API_KEY = os.getenv("API_KEY", "").strip("'").strip('"')
 MODEL_NAME = "gpt-4o-mini-2024-07-18"
 BRIDGE_ENDPOINT = "https://bridge.luxiacloud.com/llm/openai/chat/completions/gpt-4o-mini/create" 
 
-# Golden Image URL (정상 제품 기준 이미지)
-GOLDEN_IMAGE_URL = "https://cfiles.dacon.co.kr/competitions/236680_dev/DEV_003.png"
+# Golden Image URL (정상 제품 기준 이미지 - User Provided)
+GOLDEN_IMAGE_URL = "https://cfiles.dacon.co.kr/competitions/236680_dev/DEV_000.png"
+
+# --- OpenCV Pre-processing Helpers ---
+def preprocess_image_for_diff(img):
+    """
+    Apply standard preprocessing for edge comparison:
+    1. Grayscale
+    2. Gaussian Blur (5x5)
+    3. Canny Edge Detection
+    4. Dilate (to connect broken edges)
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+    kernel = np.ones((3,3), np.uint8)
+    dilated = cv2.dilate(edges, kernel, iterations=1)
+    return dilated
+
+def compute_edge_difference(img1, img2):
+    """
+    Compute similarity score based on edge difference.
+    Returns: pixel_diff_count (lower is more similar)
+    """
+    # Ensure same size
+    if img1.shape != img2.shape:
+        img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
+        
+    p1 = preprocess_image_for_diff(img1)
+    p2 = preprocess_image_for_diff(img2)
+    
+    # Compute Absolute Difference
+    diff = cv2.absdiff(p1, p2)
+    
+    # Threshold to ignore minor noise (optional, but good for stability)
+    _, diff_thresh = cv2.threshold(diff, 127, 255, cv2.THRESH_BINARY)
+    
+    # Count different pixels
+    non_zero = cv2.countNonZero(diff_thresh)
+    return non_zero, diff_thresh # Return visual diff too if needed for debugging
 
 # Detailed Prompt Criteria (Granular for LLM Accuracy)
 BASE_CRITERIA = """
-파손되지 않은 트랜지스터가 제대로 설치되었는지 확인합니다.
-트랜지스터는 검정색 패키지 아래에 은식 핀이 3개 존재합니다.
-각 핀은 하단 중앙 3개의 구멍에 3개의 핀에 각각 하나씩 정확히 설치되어있어야 합니다.
-검정색 패키지가 중앙에 삐뚤지 않게 설치되어야 합니다.
-정상이면 False, 결함이 있으면 True를 반환합니다.
+Verify if the undamaged transistor is correctly installed.
+The transistor consists of a black package with 3 silver pins at the bottom.
+Each of the 3 pins must be correctly inserted into one of the 3 holes at the bottom center.
+The black package must be installed in the center without being skewed.
+Return False if normal, True if defective.
 
-상세 판단 가이드:
-    패키지 판단[key: package_damage or misalignment_severe]:
-        - 본체의 모서리가 이미지 프레임과 평행하지 않고 삐뚤어져 있으면 True
-        - 소자가 중앙 정위치를 크게 벗어나 있으면 True
-        - 본체 모서리가 깨져서 날아간 경우 True
-        - 표면에 깊은 균열이나 구멍이 뚫린 경우 True
-        - (주의: 단순 회전이나 기울어짐은 여기에 해당하지 않음)
+Detailed Judgment Guide:
+    Package Judgment [key: package_damage or misalignment_severe]:
+        - True if the body edges are not parallel to the image frame and are skewed.
+        - True if the device is significantly off-center.
+        - True if the body corners are broken or chipped.
+        - True if there are deep cracks or holes on the surface.
+        - (Note: Simple rotation or slight tilt does not apply here unless severe)
    
-    핀 판단[key: pin_missing_or_broken_or_short]:
-        - 핀끼리 서로 닿거나 겹쳐 있는 경우 True
-        - 핀의 끝부분이 패드(구멍)의 정위치에서 벗어나 있는 경우 True
-        - 핀이 절단(Broken)되어 있거나, 뿌리 부분만 남고 잘려 나간 경우 True
-        - 핀 자체가 아예 없는 경우 True
-        - 정상적인 핀 개수(3개)보다 적은 경우 True
-        - 각 핀은 트랜지스터 패키지로부터 구멍까지 연결되지 않으면 True
+    Pin Judgment [key: pin_missing_or_broken_or_short]:
+        - True if pins are touching or overlapping each other.
+        - True if the tips of the pins are off the correct position of the pads (holes).
+        - True if a pin is broken or only the root remains.
+        - True if a pin is completely missing.
+        - True if there are fewer than the normal number of pins (3).
+        - True if each pin does not connect from the transistor package to the hole.
 """
 
 OBS_ITEMS = [
-  {"key": "package_damage", "desc": "패키지 파손/크랙"},
-  {"key": "pin_missing_or_broken_or_short", "desc": "핀 결손/단선/접촉"},
-  {"key": "misalignment_severe", "desc": "패키지 위치 틀어짐"}
+  {"key": "package_damage", "desc": "Package Damage/Crack"},
+  {"key": "pin_missing_or_broken_or_short", "desc": "Pin Missing/Broken/Short"},
+  {"key": "misalignment_severe", "desc": "Severe Misalignment"}
 ]
 
 # Robust LLM Wrapper with Retry
@@ -244,8 +282,8 @@ def encode_image(img):
 
 def build_prompt_text(strict=False):
     criteria_text = "\n".join([f"- {item['key']}: {item['desc']}" for item in OBS_ITEMS])
-    rule = "\n판단 기준:\n- 구조적 결함이 명확할 때만 true. 애매하면 false."
-    return f"Image 1은 검사 대상 이미지입니다.\n이 이미지에 결함이 있는지 아래 항목별로 판단해 JSON으로 출력하세요.\n{criteria_text}\n{rule}\n{BASE_CRITERIA}"
+    rule = "\nJudgment Criteria:\n- True only if structural defect is clear. False if ambiguous."
+    return f"Image 1 is the inspection target.\nDetermine if there are defects in this image for each item below and output as JSON.\n{criteria_text}\n{rule}\n{BASE_CRITERIA}"
 
 def map_to_consolidated(details: dict) -> dict:
     """Map granular LLM keys to Simplified Frontend keys"""
@@ -379,10 +417,55 @@ def run_agent_logic(img_url):
     try:
         target_img = download_image(img_url)
         if target_img is None:
-            raise Exception("Failed to download image")
+            raise Exception("Failed to download target image")
+            
+        golden_img = download_image(GOLDEN_IMAGE_URL)
+        if golden_img is None:
+             raise Exception("Failed to download golden image")
+
     except Exception as e:
         log(f"Image download failed: {e}")
         return {"label": 0, "confidence": 0.0, "logs": logs, "status": "error", "details": {}}
+
+    # --- Step 0: OpenCV Edge Density Check (Structural Anomaly) ---
+    try:
+        # Instead of absdiff (sensitive to alignment), use Edge Density Ratio
+        golden_edges = preprocess_image_for_diff(golden_img)
+        target_edges = preprocess_image_for_diff(target_img)
+        
+        g_count = cv2.countNonZero(golden_edges)
+        t_count = cv2.countNonZero(target_edges)
+        
+        # Avoid division by zero
+        if g_count == 0: g_count = 1
+        
+        ratio = t_count / g_count
+        log(f"Step 0 (freq): Golden={g_count}, Target={t_count}, Ratio={ratio:.2f}")
+        
+        # Threshold:
+        # If Ratio < 0.5: Likely Missing Component (Transistor body missing -> less edges)
+        # If Ratio > 1.5: Likely Severe Noise/Shattered (Too many edges)
+        if ratio < 0.5:
+             log(f"Step 0: Edge Density Too Low ({ratio:.2f}). Missing Component likely.")
+             return {
+                "label": 1, 
+                "confidence": 0.95, 
+                "logs": logs, 
+                "status": "completed", 
+                "details": {"defect_package": True, "reason": "Severe Structural Missing"}
+            }
+        elif ratio > 1.5:
+             log(f"Step 0: Edge Density Too High ({ratio:.2f}). Structural Damage likely.")
+             return {
+                "label": 1, 
+                "confidence": 0.95, 
+                "logs": logs, 
+                "status": "completed", 
+                "details": {"defect_package": True, "reason": "Severe Structural Damage"}
+             }
+            
+    except Exception as e:
+        log(f"Step 0 Failed: {e}. Proceeding to LLM.")
 
     # --- Step 1: Global Scan ---
     prompt_text_1 = build_prompt_text(strict=False)
@@ -460,26 +543,26 @@ def run_agent_logic(img_url):
                 current_consolidated_key = "defect_package"
                 region_prompt = """
                 [Region: TOP (Package Alignment Analysis)]
-                Image 1: 검사 대상 (Top Part)
+                Image 1: Inspection Target (Top Part)
                 
-                판단 기준 (One of below -> True):
-                1. [회전/Rotation]: 검은색 본체가 프레임에 대해 5도 이상 비스듬하게 회전되어 있습니까?
-                2. [기울어짐/Tilt]: 본체 모서리가 프레임과 평행하지 않고 삐뚤어져 있습니까?
-                3. [파손/Breakage]: 패키지 표면에 명확한 크랙/깨짐이 있습니까?
+                Judgment Criteria (One of below -> True):
+                1. [Rotation]: Is the black body rotated more than 5 degrees relative to the frame?
+                2. [Tilt]: Is the body edge not parallel to the frame and skewed?
+                3. [Breakage]: Is there clear cracking/breakage on the package surface?
                 """
             else: # bottom
                 current_consolidated_key = "defect_pin"
                 region_prompt = """
-                - 핀끼리 서로 닿거나 겹쳐 있는 경우 True
-                - 핀의 끝부분이 패드(구멍)의 정위치에서 벗어나 있는 경우 True
-                - 핀이 절단(Broken)되어 있거나, 뿌리 부분만 남고 잘려 나간 경우 True
-                - 핀 자체가 아예 없는 경우 True
-                - 정상적인 핀 개수(3개)보다 적은 경우 True
-                - 하단 중앙 세개의 구멍에 세개의 핀이 하니씩 설치되지 않은 경우 True
+                - True if pins are touching or overlapping each other.
+                - True if the tips of the pins are off the correct position of the pads (holes).
+                - True if a pin is broken or only the root remains.
+                - True if a pin is completely missing.
+                - True if there are fewer than the normal number of pins (3).
+                - True if 3 pins are not installed one by one in the 3 bottom center holes.
             """
             # Standard output format
             user_content_2 = [
-                {"type": "text", "text": f"{region_prompt}\n정밀 분석하여 JSON으로 응답하세요 ({current_consolidated_key}: true/false).\n" + parser.get_format_instructions()},
+                {"type": "text", "text": f"{region_prompt}\nAnalyze precisely and respond in JSON ({current_consolidated_key}: true/false).\n" + parser.get_format_instructions()},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{t_b64}"}}  # Single Image
             ]
             
